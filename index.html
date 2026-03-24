@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1CDP IS Evaluation — Executive Dashboard</title>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<style>
+/* ===== CDC Premium Theme ===== */
+:root {
+  --blue:#005EA2;
+  --blue-dark:#003e7e;
+  --bg:#f4f6f9;
+  --card:#ffffff;
+  --border:#dee2e9;
+  --text:#1c1c1c;
+  --muted:#5a5a5a;
+  --green:#1D9E75;
+  --red:#A32D2D;
+  --amber:#BA7517;
+}
+
+/* Layout */
+body{font-family:Segoe UI,Arial,sans-serif;background:var(--bg);margin:0;color:var(--text);}
+.page{max-width:1200px;margin:auto;padding:28px;}
+
+/* Header */
+.header{background:var(--blue);color:#fff;}
+.header-top{display:flex;align-items:center;gap:12px;padding:12px 28px;border-bottom:3px solid var(--blue-dark);}
+.header-top img{height:34px;}
+.header-sub{padding:6px 28px;font-size:11px;opacity:.85;text-transform:uppercase}
+
+/* Nav */
+.nav{display:flex;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto;}
+.nav div{padding:12px 16px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;}
+.nav .active{color:var(--blue);border-bottom:3px solid var(--blue);}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
+.card-title{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+
+/* Metrics */
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;}
+.metric{text-align:center;padding:12px;border:1px solid var(--border);border-radius:6px;background:#fff;}
+.metric-val{font-size:22px;font-weight:700;color:var(--blue);}
+.metric-lbl{font-size:11px;color:var(--muted);}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--blue);color:#fff;padding:8px;}
+td{padding:8px;border-bottom:1px solid var(--border);}
+
+/* Responsive */
+@media(max-width:700px){
+.two-col{grid-template-columns:1fr!important;}
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <img src="https://raw.githubusercontent.com/gbengasaolu/dash_eval_cdp/main/CDC_logo_2024.svg">
+    <div>1CDP IS Evaluation — Executive Dashboard</div>
+  </div>
+  <div class="header-sub">DeLone–McLean Model | Dynamic Dataset</div>
+</div>
+
+<div class="nav">
+  <div class="active" onclick="show('s1',this)">Respondents</div>
+  <div onclick="show('s2',this)">Constructs</div>
+  <div onclick="show('s3',this)">Scorecard</div>
+  <div onclick="show('s4',this)">Drivers</div>
+</div>
+
+<div class="page">
+
+<!-- SECTION 1 -->
+<div id="s1" class="section active">
+
+<div class="metric-row" id="metrics"></div>
+
+<div class="card">
+  <div class="card-title">Respondents by Branch</div>
+  <canvas id="branchChart"></canvas>
+</div>
+
+</div>
+
+<!-- SECTION 2 -->
+<div id="s2" class="section">
+
+<div class="card">
+  <div class="card-title">Construct Summary</div>
+  <table id="tbl-constructs"></table>
+</div>
+
+</div>
+
+<!-- SECTION 3 -->
+<div id="s3" class="section">
+
+<div class="card">
+  <div class="card-title">Branch Scorecard</div>
+  <table id="tbl-scorecard"></table>
+</div>
+
+</div>
+
+<!-- SECTION 4 -->
+<div id="s4" class="section">
+
+<div class="card">
+  <div class="card-title">Correlation with Net Benefits</div>
+  <canvas id="corrChart"></canvas>
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+/* ============================
+DATA LOAD
+============================ */
+const DATA_URL = "https://raw.githubusercontent.com/gbengasaolu/dash_eval_cdp/refs/heads/main/cleaned_1cdp_survey.csv";
+
+Papa.parse(DATA_URL, {
+  download: true,
+  header: true,
+  complete: function(results){
+    const raw = results.data;
+
+    const data = raw.map(r => ({
+      branch: normalizeBranch(r.branch_name),
+      level: normalizeLevel(r.leadership_level),
+      sys: num(r.system_quality_score),
+      info: num(r.information_quality_score),
+      svc: num(r.service_quality_score),
+      use: num(r.use_and_intention_to_use_score),
+      sat: num(r.user_satisfaction_score),
+      nb: num(r.net_benefits_score)
+    })).filter(r => r.sys !== null);
+
+    buildDashboard(data);
+  }
+});
+
+/* ============================
+HELPERS
+============================ */
+function num(x){
+  const v = parseFloat(x);
+  return isNaN(v)? null : v;
+}
+
+function normalizeBranch(b){
+  if(!b) return "Unknown";
+  b = b.toUpperCase();
+  if(b.includes("IDPB")) return "IDPB";
+  if(b.includes("VSPB")) return "VSPB";
+  if(b.includes("BSPB")) return "BSPB";
+  if(b.includes("NRSS")) return "PRB-NRSS";
+  if(b.includes("MPOX")) return "PRB-Mpox";
+  return b;
+}
+
+function normalizeLevel(l){
+  if(!l) return "Other";
+  l = l.toLowerCase();
+  if(l.includes("lead")) return "Leadership";
+  return "Staff";
+}
+
+function mean(arr){
+  return arr.reduce((a,b)=>a+b,0)/arr.length;
+}
+
+/* ============================
+MAIN BUILD
+============================ */
+function buildDashboard(data){
+
+/* Metrics */
+document.getElementById("metrics").innerHTML = `
+<div class="metric"><div class="metric-val">${data.length}</div><div class="metric-lbl">Respondents</div></div>
+<div class="metric"><div class="metric-val">${new Set(data.map(d=>d.branch)).size}</div><div class="metric-lbl">Branches</div></div>
+<div class="metric"><div class="metric-val">${new Set(data.map(d=>d.level)).size}</div><div class="metric-lbl">Leadership Levels</div></div>
+`;
+
+/* Branch counts */
+const branches = [...new Set(data.map(d=>d.branch))];
+const counts = branches.map(b => data.filter(x=>x.branch===b).length);
+
+new Chart("branchChart", {
+  type:"bar",
+  data:{labels:branches,datasets:[{data:counts}]},
+});
+
+/* Construct summary */
+const constructs = ["sys","info","svc","use","sat","nb"];
+
+const tbl = document.getElementById("tbl-constructs");
+tbl.innerHTML = "<tr><th>Construct</th><th>Mean</th></tr>";
+
+constructs.forEach(c=>{
+  const vals = data.map(d=>d[c]).filter(v=>v!==null);
+  tbl.innerHTML += `<tr><td>${c}</td><td>${mean(vals).toFixed(2)}</td></tr>`;
+});
+
+/* Scorecard */
+const scoreTbl = document.getElementById("tbl-scorecard");
+scoreTbl.innerHTML = "<tr><th>Branch</th><th>Net Benefits</th></tr>";
+
+branches.forEach(b=>{
+  const vals = data.filter(d=>d.branch===b).map(d=>d.nb);
+  scoreTbl.innerHTML += `<tr><td>${b}</td><td>${mean(vals).toFixed(2)}</td></tr>`;
+});
+
+/* Correlation */
+function corr(x,y){
+  const mx = mean(x), my = mean(y);
+  let num=0,dx=0,dy=0;
+  for(let i=0;i<x.length;i++){
+    num += (x[i]-mx)*(y[i]-my);
+    dx += (x[i]-mx)**2;
+    dy += (y[i]-my)**2;
+  }
+  return num/Math.sqrt(dx*dy);
+}
+
+const nb = data.map(d=>d.nb);
+
+const corrVals = constructs.map(c=>{
+  if(c==="nb") return 1;
+  return corr(data.map(d=>d[c]), nb);
+});
+
+new Chart("corrChart",{
+  type:"bar",
+  data:{labels:constructs,datasets:[{data:corrVals}]}
+});
+
+}
+
+/* Navigation */
+function show(id,el){
+  document.querySelectorAll(".section").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="block";
+  document.querySelectorAll(".nav div").forEach(n=>n.classList.remove("active"));
+  el.classList.add("active");
+}
+
+</script>
+
+</body>
+</html>
